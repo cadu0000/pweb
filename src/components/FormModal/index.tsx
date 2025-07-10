@@ -4,12 +4,15 @@ import { TransactionSwitcher } from "../TransactionSwitcher";
 import { ITransaction } from "@/types/transaction";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
-// Validação do formulário
+import { useEffect } from "react";
 
 export interface IFormModalProps {
     formTitle: string;
     closeModal: () => void;
     addTransaction: (transaction: ITransaction) => void;
+    updateTransaction?: (id: string, transaction: Omit<ITransaction, 'id'>) => void;
+    transactionToEdit?: ITransaction | null;
+    isEditing?: boolean;
 }
 
 const transactionSchema = object({
@@ -27,6 +30,12 @@ const transactionSchema = object({
     .min(0.01, 'O preço deve ser maior que zero'),
   data: date()
     .required('A Data é obrigatória')
+    .transform((value) => {
+      if (typeof value === 'string') {
+        return new Date(value);
+      }
+      return value;
+    })
     .default(() => new Date())
 })
 
@@ -42,29 +51,64 @@ const transactionFormDefaultValues: ITransactionForm = {
 
 type TransactionType = 'INCOME' | 'OUTCOME';
 
-
-export function FormModal({formTitle, closeModal, addTransaction}: IFormModalProps){
-    // Função para lidar com o envio do formulário
-
+export function FormModal({
+    formTitle, 
+    closeModal, 
+    addTransaction, 
+    updateTransaction,
+    transactionToEdit,
+    isEditing = false
+}: IFormModalProps){
     const {
       handleSubmit,
       setValue,
       watch,
       register,
+      reset,
       formState: { errors }
     } = useForm<ITransactionForm>({
       defaultValues: transactionFormDefaultValues,
       resolver: yupResolver(transactionSchema)
     })
 
+    useEffect(() => {
+      if (isEditing && transactionToEdit) {
+        const transactionDate = new Date(transactionToEdit.data);
+        reset({
+          title: transactionToEdit.title,
+          type: transactionToEdit.type,
+          category: transactionToEdit.category,
+          price: transactionToEdit.price,
+          data: transactionDate
+        });
+      } else {
+        reset(transactionFormDefaultValues);
+      }
+    }, [isEditing, transactionToEdit, reset]);
+
     const handleSetType = (type: 'INCOME' | 'OUTCOME') => {
       setValue('type', type);
     }
 
     const type = watch('type', 'INCOME');
+    const dataValue = watch("data");
+
+    const formatDateForInput = (date: Date | string) => {
+      if (date instanceof Date) {
+        return date.toISOString().split('T')[0];
+      }
+      if (typeof date === 'string') {
+        return new Date(date).toISOString().split('T')[0];
+      }
+      return '';
+    };
 
     const onSubmit = (data: ITransactionForm) => {
-      addTransaction(data as ITransaction);
+      if (isEditing && transactionToEdit && updateTransaction) {
+        updateTransaction(transactionToEdit.id!, data as Omit<ITransaction, 'id'>);
+      } else {
+        addTransaction(data as ITransaction);
+      }
       closeModal();
     }
     
@@ -100,9 +144,20 @@ export function FormModal({formTitle, closeModal, addTransaction}: IFormModalPro
             {errors.type && <span className="text-red-500">{errors.type.message}</span>}
             <Input type="text" placeholder="Categoria" {...register("category")} />
             {errors.category && <span className="text-red-500">{errors.category.message}</span>}
+            <Input 
+                type="date" 
+                {...register("data")}
+                value={formatDateForInput(dataValue)}
+            />
+            {errors.data && <span className="text-red-500">{errors.data.message}</span>}
             
             <div className="bg-modal px-12 py-3 flex sm:flex-row-reverse w-full mb-11">          
-              <button type="submit" className="mt-3 w-full justify-center rounded-md bg-income text-white px-3 py-5 text-normal font-semibold shadow-sm hover:opacity-80 sm:mt-0">Confirmar</button>
+              <button 
+                type="submit" 
+                className="mt-3 w-full justify-center rounded-md bg-income text-white px-3 py-5 text-normal font-semibold shadow-sm hover:opacity-80 sm:mt-0"
+              >
+                {isEditing ? 'Atualizar' : 'Confirmar'}
+              </button>
             </div>
         </form>
         
